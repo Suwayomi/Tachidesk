@@ -13,7 +13,7 @@ twelvemonkeys = "3.12.0"
 graphqlkotlin = "8.2.1"
 xmlserialization = "0.90.3"
 ktlint = "1.5.0"
-koin = "4.0.0"
+koin = "4.0.1"
 
 [libraries]
 # Kotlin
