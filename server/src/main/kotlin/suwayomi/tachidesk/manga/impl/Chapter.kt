@@ -388,6 +388,12 @@ object Chapter {
             return
         }
 
+        // The downloader checks if pages are already downloaded to prevent unnecessary downloads. However, in case this
+        // is e.g. a re-uploaded chapter, this will prevent the new pages from getting downloaded
+        if (serverConfig.autoDownloadDeleteExistingFiles.value) {
+            deleteChapters(chapterIdsToDownload)
+        }
+
         log.info { "download ${chapterIdsToDownload.size} new chapter(s)..." }
 
         DownloadManager.enqueue(EnqueueInput(chapterIdsToDownload))
