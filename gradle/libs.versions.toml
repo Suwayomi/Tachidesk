@@ -43,7 +43,7 @@ okhttp-core = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okhttp-logging = { module = "com.squareup.okhttp3:logging-interceptor", version.ref = "okhttp" }
 okhttp-dnsoverhttps = { module = "com.squareup.okhttp3:okhttp-dnsoverhttps", version.ref = "okhttp" }
 okhttp-brotli = { module = "com.squareup.okhttp3:okhttp-brotli", version.ref = "okhttp" }
-okio = "com.squareup.okio:okio:3.9.1"
+okio = "com.squareup.okio:okio:3.10.2"
 
 # Javalin api
 javalin-core = { module = "io.javalin:javalin", version.ref = "javalin" }
