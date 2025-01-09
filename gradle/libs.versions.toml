@@ -98,7 +98,7 @@ dex2jar-tools = { module = "com.github.ThexXTURBOXx.dex2jar:dex-tools", version.
 
 # APK
 apk-parser = "net.dongliu:apk-parser:2.6.10"
-apksig = "com.android.tools.build:apksig:8.7.3"
+apksig = "com.android.tools.build:apksig:8.8.0"
 
 # Xml
 xmlpull = "xmlpull:xmlpull:1.1.3.4a"
