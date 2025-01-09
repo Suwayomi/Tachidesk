@@ -77,6 +77,37 @@ jobs:
           path: scripts.tar.gz
           if-no-files-found: error
 
+  jlink:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x64
+          - os: windows-latest
+            name: windows-x64
+          - os: macos-14
+            name: macOS-arm64
+          - os: macos-13
+            name: macOS-x64
+        os: [ubuntu-latest, windows-latest, macos-14, macos-13]
+
+    steps:
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: 'temurin'
+
+      - name: Package JDK
+        run: jlink --add-modules java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.naming,java.prefs,java.scripting,java.se,java.security.jgss,java.security.sasl,java.sql,java.transaction.xa,java.xml,jdk.attach,jdk.crypto.ec,jdk.jdi,jdk.management,jdk.net,jdk.random,jdk.unsupported,jdk.unsupported.desktop,jdk.zipfs --output suwa --strip-debug --no-man-pages --no-header-files --compress=2
+
+      - name: Upload JDK package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}-jre
+          path: suwa
+
   bundle:
     strategy:
       fail-fast: false
@@ -90,7 +121,7 @@ jobs:
           - windows-x64
 
     name: Make ${{ matrix.os }} release
-    needs: build
+    needs: [build,jlink]
     runs-on: ubuntu-latest
     steps:
       - name: Download Jar
@@ -98,6 +129,12 @@ jobs:
         with:
           name: jar
           path: server/build
+
+      - name: Download JRE
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.os }}-jre
+          path: jre
 
       - name: Download icons
         uses: actions/download-artifact@v4
