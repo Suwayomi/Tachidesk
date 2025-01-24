@@ -151,16 +151,16 @@ setup_jre() {
     mv "jre" "$RELEASE_NAME/jre"
   else
     if [ ! -f "$JRE" ]; then
-        curl -L "$JRE_URL" -o "$JRE"
-      fi
+      curl -L "$JRE_URL" -o "$JRE"
+    fi
 
-      local ext="${JRE##*.}"
-      if [ "$ext" = "zip" ]; then
-        unzip "$JRE"
-      else
-        tar xvf "$JRE"
-      fi
-      mv "$JRE_DIR" "$RELEASE_NAME/jre"
+    local ext="${JRE##*.}"
+    if [ "$ext" = "zip" ]; then
+      unzip "$JRE"
+    else
+      tar xvf "$JRE"
+    fi
+    mv "$JRE_DIR" "$RELEASE_NAME/jre"
   fi
 }
 
@@ -254,6 +254,7 @@ make_windows_bundle() {
   mkdir "$RELEASE_NAME/bin"
   cp "$JAR" "$RELEASE_NAME/bin/Suwayomi-Server.jar"
   cp "scripts/resources/Suwayomi Launcher.bat" "$RELEASE_NAME"
+  cp "scripts/resources/msi/UninstallPreviousVersions.ps1" "$RELEASE_NAME"
 
   zip -9 -r "$RELEASE" "$RELEASE_NAME"
 }
