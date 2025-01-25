@@ -22,8 +22,8 @@ class TrackerType(
     val authUrl: String?,
     val supportsTrackDeletion: Boolean?,
 ) : Node {
-    constructor(tracker: Tracker) : this(
-        tracker.isLoggedIn,
+    constructor(tracker: Tracker, userId: Int) : this(
+        tracker.isLoggedIn(userId),
         tracker,
     )
 

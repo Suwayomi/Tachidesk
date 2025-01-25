@@ -18,15 +18,15 @@ import suwayomi.tachidesk.test.clearTables
 class CategoryControllerTest : ApplicationTest() {
     @Test
     fun categoryReorder() {
-        Category.createCategory("foo")
-        Category.createCategory("bar")
-        val cats = Category.getCategoryList()
+        Category.createCategory(1, "foo")
+        Category.createCategory(1, "bar")
+        val cats = Category.getCategoryList(1)
         val foo = cats.asSequence().filter { it.name == "foo" }.first()
         val bar = cats.asSequence().filter { it.name == "bar" }.first()
         assertEquals(1, foo.order)
         assertEquals(2, bar.order)
-        Category.reorderCategory(1, 2)
-        val catsReordered = Category.getCategoryList()
+        Category.reorderCategory(1, 1, 2)
+        val catsReordered = Category.getCategoryList(1)
         val fooReordered = catsReordered.asSequence().filter { it.name == "foo" }.first()
         val barReordered = catsReordered.asSequence().filter { it.name == "bar" }.first()
         assertEquals(2, fooReordered.order)

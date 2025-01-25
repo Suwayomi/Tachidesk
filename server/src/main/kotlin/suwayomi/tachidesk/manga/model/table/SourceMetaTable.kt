@@ -8,6 +8,8 @@ package suwayomi.tachidesk.manga.model.table
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import org.jetbrains.exposed.dao.id.IntIdTable
+import org.jetbrains.exposed.sql.ReferenceOption
+import suwayomi.tachidesk.global.model.table.UserTable
 import suwayomi.tachidesk.manga.model.table.ChapterMetaTable.ref
 
 /**
@@ -17,4 +19,5 @@ object SourceMetaTable : IntIdTable() {
     val key = varchar("key", 256)
     val value = varchar("value", 4096)
     val ref = long("source_ref")
+    val user = reference("user", UserTable, ReferenceOption.CASCADE)
 }

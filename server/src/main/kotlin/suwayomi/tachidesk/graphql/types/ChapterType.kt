@@ -17,6 +17,7 @@ import suwayomi.tachidesk.graphql.server.primitives.NodeList
 import suwayomi.tachidesk.graphql.server.primitives.PageInfo
 import suwayomi.tachidesk.manga.model.dataclass.ChapterDataClass
 import suwayomi.tachidesk.manga.model.table.ChapterTable
+import suwayomi.tachidesk.manga.model.table.ChapterUserTable
 import java.util.concurrent.CompletableFuture
 
 class ChapterType(
@@ -59,10 +60,10 @@ class ChapterType(
         row[ChapterTable.chapter_number],
         row[ChapterTable.scanlator],
         row[ChapterTable.manga].value,
-        row[ChapterTable.isRead],
-        row[ChapterTable.isBookmarked],
-        row[ChapterTable.lastPageRead],
-        row[ChapterTable.lastReadAt],
+        row.getOrNull(ChapterUserTable.isRead) ?: false,
+        row.getOrNull(ChapterUserTable.isBookmarked) ?: false,
+        row.getOrNull(ChapterUserTable.lastPageRead) ?: 0,
+        row.getOrNull(ChapterUserTable.lastReadAt) ?: 0,
         row[ChapterTable.sourceOrder],
         row[ChapterTable.realUrl],
         row[ChapterTable.fetchedAt],

@@ -14,16 +14,22 @@ import org.dataloader.DataLoaderFactory
 import org.dataloader.DataLoaderOptions
 import org.jetbrains.exposed.sql.Slf4jSqlDebugLogger
 import org.jetbrains.exposed.sql.addLogger
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.andWhere
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import suwayomi.tachidesk.graphql.cache.CustomCacheMap
+import suwayomi.tachidesk.graphql.server.getAttribute
 import suwayomi.tachidesk.graphql.types.MangaNodeList
 import suwayomi.tachidesk.graphql.types.MangaNodeList.Companion.toNodeList
 import suwayomi.tachidesk.graphql.types.MangaType
 import suwayomi.tachidesk.manga.model.table.CategoryMangaTable
 import suwayomi.tachidesk.manga.model.table.MangaTable
+import suwayomi.tachidesk.manga.model.table.MangaUserTable
+import suwayomi.tachidesk.manga.model.table.getWithUserData
+import suwayomi.tachidesk.server.JavalinSetup
 import suwayomi.tachidesk.server.JavalinSetup.future
+import suwayomi.tachidesk.server.user.requireUser
 
 class MangaDataLoader : KotlinDataLoader<Int, MangaType?> {
     override val dataLoaderName = "MangaDataLoader"
@@ -31,10 +37,12 @@ class MangaDataLoader : KotlinDataLoader<Int, MangaType?> {
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<Int, MangaType?> =
         DataLoaderFactory.newDataLoader { ids ->
             future {
+                val userId = graphQLContext.getAttribute(JavalinSetup.Attribute.TachideskUser).requireUser()
                 transaction {
                     addLogger(Slf4jSqlDebugLogger)
                     val manga =
                         MangaTable
+                            .getWithUserData(userId)
                             .selectAll()
                             .where { MangaTable.id inList ids }
                             .map { MangaType(it) }
@@ -51,14 +59,16 @@ class MangaForCategoryDataLoader : KotlinDataLoader<Int, MangaNodeList> {
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<Int, MangaNodeList> =
         DataLoaderFactory.newDataLoader<Int, MangaNodeList> { ids ->
             future {
+                val userId = graphQLContext.getAttribute(JavalinSetup.Attribute.TachideskUser).requireUser()
                 transaction {
                     addLogger(Slf4jSqlDebugLogger)
                     val itemsByRef =
                         if (ids.contains(0)) {
                             MangaTable
+                                .getWithUserData(userId)
                                 .leftJoin(CategoryMangaTable)
                                 .selectAll()
-                                .where { MangaTable.inLibrary eq true }
+                                .where { MangaUserTable.inLibrary eq true and (CategoryMangaTable.user eq userId) }
                                 .andWhere { CategoryMangaTable.manga.isNull() }
                                 .map { MangaType(it) }
                                 .let {
@@ -70,7 +80,7 @@ class MangaForCategoryDataLoader : KotlinDataLoader<Int, MangaNodeList> {
                             CategoryMangaTable
                                 .innerJoin(MangaTable)
                                 .selectAll()
-                                .where { CategoryMangaTable.category inList ids }
+                                .where { CategoryMangaTable.category inList ids and (CategoryMangaTable.user eq userId) }
                                 .map { Pair(it[CategoryMangaTable.category].value, MangaType(it)) }
                                 .groupBy { it.first }
                                 .mapValues { it.value.map { pair -> pair.second } }
@@ -87,10 +97,12 @@ class MangaForSourceDataLoader : KotlinDataLoader<Long, MangaNodeList> {
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<Long, MangaNodeList> =
         DataLoaderFactory.newDataLoader<Long, MangaNodeList> { ids ->
             future {
+                val userId = graphQLContext.getAttribute(JavalinSetup.Attribute.TachideskUser).requireUser()
                 transaction {
                     addLogger(Slf4jSqlDebugLogger)
                     val mangaBySourceId =
                         MangaTable
+                            .getWithUserData(userId)
                             .selectAll()
                             .where { MangaTable.sourceReference inList ids }
                             .map { MangaType(it) }
@@ -107,12 +119,14 @@ class MangaForIdsDataLoader : KotlinDataLoader<List<Int>, MangaNodeList> {
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<List<Int>, MangaNodeList> =
         DataLoaderFactory.newDataLoader(
             { mangaIds ->
+                val userId = graphQLContext.getAttribute(JavalinSetup.Attribute.TachideskUser).requireUser()
                 future {
                     transaction {
                         addLogger(Slf4jSqlDebugLogger)
                         val ids = mangaIds.flatten().distinct()
                         val manga =
                             MangaTable
+                                .getWithUserData(userId)
                                 .selectAll()
                                 .where { MangaTable.id inList ids }
                                 .map { MangaType(it) }

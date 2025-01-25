@@ -17,6 +17,8 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import suwayomi.tachidesk.manga.impl.util.source.GetCatalogueSource.getCatalogueSourceOrStub
 import suwayomi.tachidesk.manga.model.dataclass.PagedMangaListDataClass
 import suwayomi.tachidesk.manga.model.table.MangaTable
+import suwayomi.tachidesk.manga.model.table.MangaUserTable
+import suwayomi.tachidesk.manga.model.table.getWithUserData
 import suwayomi.tachidesk.manga.model.table.toDataClass
 import java.time.Instant
 
@@ -24,6 +26,7 @@ object MangaList {
     fun proxyThumbnailUrl(mangaId: Int): String = "/api/v1/manga/$mangaId/thumbnail"
 
     suspend fun getMangaList(
+        userId: Int,
         sourceId: Long,
         pageNum: Int = 1,
         popular: Boolean,
@@ -42,18 +45,22 @@ object MangaList {
                     throw Exception("Source $source doesn't support latest")
                 }
             }
-        return mangasPage.processEntries(sourceId)
+        return mangasPage.processEntries(userId, sourceId)
     }
 
-    fun MangasPage.insertOrUpdate(sourceId: Long): List<Int> =
+    fun MangasPage.insertOrUpdate(
+        userId: Int,
+        sourceId: Long,
+    ): List<Int> =
         transaction {
             val existingMangaUrlsToId =
                 MangaTable
+                    .leftJoin(MangaUserTable)
                     .selectAll()
                     .where {
                         (MangaTable.sourceReference eq sourceId) and
                             (MangaTable.url inList mangas.map { it.url })
-                    }.associateBy { it[MangaTable.url] }
+                    }.groupBy { it[MangaTable.url] }
             val existingMangaUrls = existingMangaUrlsToId.map { it.key }
 
             val mangasToInsert = mangas.filter { !existingMangaUrls.contains(it.url) }
@@ -82,13 +89,14 @@ object MangaList {
                 mangas
                     .mapNotNull { sManga ->
                         existingMangaUrlsToId[sManga.url]?.let { sManga to it }
-                    }.filterNot { (_, resultRow) ->
-                        resultRow[MangaTable.inLibrary]
+                    }.filterNot { (_, resultRows) ->
+                        resultRows.any { it[MangaUserTable.inLibrary] } // todo
                     }
 
             if (mangaToUpdate.isNotEmpty()) {
                 BatchUpdateStatement(MangaTable).apply {
-                    mangaToUpdate.forEach { (sManga, manga) ->
+                    mangaToUpdate.forEach { (sManga, mangas) ->
+                        val manga = mangas.first()
                         addBatch(EntityID(manga[MangaTable.id].value, MangaTable))
                         this[MangaTable.title] = sManga.title
                         this[MangaTable.artist] = sManga.artist ?: manga[MangaTable.artist]
@@ -112,7 +120,7 @@ object MangaList {
 
             val mangaUrlsToId =
                 existingMangaUrlsToId
-                    .mapValues { it.value[MangaTable.id].value } + insertedMangaUrlsToId
+                    .mapValues { it.value.first()[MangaTable.id].value } + insertedMangaUrlsToId
 
             mangas.map { manga ->
                 mangaUrlsToId[manga.url]
@@ -120,12 +128,20 @@ object MangaList {
             }
         }
 
-    fun MangasPage.processEntries(sourceId: Long): PagedMangaListDataClass {
+    fun MangasPage.processEntries(
+        userId: Int,
+        sourceId: Long,
+    ): PagedMangaListDataClass {
         val mangasPage = this
         val mangaList =
             transaction {
-                val mangaIds = insertOrUpdate(sourceId)
-                return@transaction MangaTable.selectAll().where { MangaTable.id inList mangaIds }.map { MangaTable.toDataClass(it) }
+                val mangaIds = insertOrUpdate(userId, sourceId)
+                return@transaction MangaTable
+                    .getWithUserData(userId)
+                    .selectAll()
+                    .where {
+                        MangaTable.id inList mangaIds
+                    }.map { MangaTable.toDataClass(userId, it) }
             }
         return PagedMangaListDataClass(
             mangaList,

@@ -27,7 +27,10 @@ object ProtoBackupValidator {
         val missingSourceIds: List<Pair<Long, String>>,
     )
 
-    fun validate(backup: Backup): ValidationResult {
+    fun validate(
+        userId: Int,
+        backup: Backup,
+    ): ValidationResult {
         if (backup.backupManga.isEmpty()) {
             throw Exception("Backup does not contain any manga.")
         }
@@ -48,7 +51,7 @@ object ProtoBackupValidator {
         val missingTrackers =
             trackers
                 .mapNotNull { TrackerManager.getTracker(it) }
-                .filter { !it.isLoggedIn }
+                .filter { !it.isLoggedIn(userId) }
                 .map { it.name }
                 .sorted()
 
@@ -62,7 +65,10 @@ object ProtoBackupValidator {
         )
     }
 
-    fun validate(sourceStream: InputStream): ValidationResult {
+    fun validate(
+        userId: Int,
+        sourceStream: InputStream,
+    ): ValidationResult {
         val backupString =
             sourceStream
                 .source()
@@ -71,6 +77,6 @@ object ProtoBackupValidator {
                 .use { it.readByteArray() }
         val backup = ProtoBackupImport.parser.decodeFromByteArray(Backup.serializer(), backupString)
 
-        return validate(backup)
+        return validate(userId, backup)
     }
 }

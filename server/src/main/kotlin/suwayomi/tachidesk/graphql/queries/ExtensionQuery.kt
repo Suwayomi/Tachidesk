@@ -28,6 +28,7 @@ import suwayomi.tachidesk.graphql.queries.filter.StringFilter
 import suwayomi.tachidesk.graphql.queries.filter.andFilterWithCompare
 import suwayomi.tachidesk.graphql.queries.filter.andFilterWithCompareString
 import suwayomi.tachidesk.graphql.queries.filter.applyOps
+import suwayomi.tachidesk.graphql.server.getAttribute
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
@@ -40,13 +41,18 @@ import suwayomi.tachidesk.graphql.server.primitives.maybeSwap
 import suwayomi.tachidesk.graphql.types.ExtensionNodeList
 import suwayomi.tachidesk.graphql.types.ExtensionType
 import suwayomi.tachidesk.manga.model.table.ExtensionTable
+import suwayomi.tachidesk.server.JavalinSetup.Attribute
+import suwayomi.tachidesk.server.user.requireUser
 import java.util.concurrent.CompletableFuture
 
 class ExtensionQuery {
     fun extension(
         dataFetchingEnvironment: DataFetchingEnvironment,
         pkgName: String,
-    ): CompletableFuture<ExtensionType> = dataFetchingEnvironment.getValueFromDataLoader("ExtensionDataLoader", pkgName)
+    ): CompletableFuture<ExtensionType> {
+        dataFetchingEnvironment.getAttribute(Attribute.TachideskUser).requireUser()
+        return dataFetchingEnvironment.getValueFromDataLoader("ExtensionDataLoader", pkgName)
+    }
 
     enum class ExtensionOrderBy(
         override val column: Column<*>,
@@ -153,6 +159,7 @@ class ExtensionQuery {
     }
 
     fun extensions(
+        dataFetchingEnvironment: DataFetchingEnvironment,
         condition: ExtensionCondition? = null,
         filter: ExtensionFilter? = null,
         @GraphQLDeprecated(
@@ -172,6 +179,7 @@ class ExtensionQuery {
         last: Int? = null,
         offset: Int? = null,
     ): ExtensionNodeList {
+        dataFetchingEnvironment.getAttribute(Attribute.TachideskUser).requireUser()
         val queryResults =
             transaction {
                 val res = ExtensionTable.selectAll()

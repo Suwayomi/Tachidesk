@@ -311,21 +311,23 @@ object DownloadManager {
                     .toList()
             }
 
+        // todo User accounts
         val mangas =
             transaction {
                 chapters
                     .distinctBy { chapter -> chapter[MangaTable.id] }
-                    .map { MangaTable.toDataClass(it) }
+                    .map { MangaTable.toDataClass(0, it) }
                     .associateBy { it.id }
             }
 
+        // todo User accounts
         val inputPairs =
             transaction {
                 chapters.map {
                     Pair(
                         // this should be safe because mangas is created above from chapters
                         mangas[it[ChapterTable.manga].value]!!,
-                        ChapterTable.toDataClass(it),
+                        ChapterTable.toDataClass(0, it),
                     )
                 }
             }

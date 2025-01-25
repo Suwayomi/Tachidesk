@@ -11,14 +11,15 @@ import uy.kohesive.injekt.injectLazy
 import java.io.IOException
 
 class MyAnimeListInterceptor(
+    private val userId: Int,
     private val myanimelist: MyAnimeList,
 ) : Interceptor {
     private val json: Json by injectLazy()
 
-    private var oauth: OAuth? = myanimelist.loadOAuth()
+    private var oauth: OAuth? = myanimelist.loadOAuth(userId)
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        if (myanimelist.getIfAuthExpired()) {
+        if (myanimelist.getIfAuthExpired(userId)) {
             throw TokenExpired()
         }
         val originalRequest = chain.request()
@@ -48,12 +49,12 @@ class MyAnimeListInterceptor(
      */
     fun setAuth(oauth: OAuth?) {
         this.oauth = oauth
-        myanimelist.saveOAuth(oauth)
+        myanimelist.saveOAuth(userId, oauth)
     }
 
     private fun refreshToken(chain: Interceptor.Chain): OAuth =
         synchronized(this) {
-            if (myanimelist.getIfAuthExpired()) throw TokenExpired()
+            if (myanimelist.getIfAuthExpired(userId)) throw TokenExpired()
             oauth?.takeUnless { it.isExpired() }?.let { return@synchronized it }
 
             val response =
@@ -64,7 +65,7 @@ class MyAnimeListInterceptor(
                 }
 
             if (response.code == 401) {
-                myanimelist.setAuthExpired()
+                myanimelist.setAuthExpired(userId)
                 throw TokenExpired()
             }
 

@@ -152,6 +152,7 @@ object Source {
     }
 
     fun modifyMeta(
+        userId: Int,
         sourceId: Long,
         key: String,
         value: String,
@@ -159,7 +160,10 @@ object Source {
         transaction {
             val meta =
                 transaction {
-                    SourceMetaTable.selectAll().where { (SourceMetaTable.ref eq sourceId) and (SourceMetaTable.key eq key) }
+                    SourceMetaTable.selectAll().where {
+                        SourceMetaTable.user eq userId and (SourceMetaTable.ref eq sourceId) and
+                            (SourceMetaTable.key eq key)
+                    }
                 }.firstOrNull()
 
             if (meta == null) {
@@ -167,9 +171,16 @@ object Source {
                     it[SourceMetaTable.key] = key
                     it[SourceMetaTable.value] = value
                     it[SourceMetaTable.ref] = sourceId
+                    it[SourceMetaTable.user] = userId
                 }
             } else {
-                SourceMetaTable.update({ (SourceMetaTable.ref eq sourceId) and (SourceMetaTable.key eq key) }) {
+                SourceMetaTable.update(
+                    {
+                        (SourceMetaTable.user eq userId) and
+                            (SourceMetaTable.ref eq sourceId) and
+                            (SourceMetaTable.key eq key)
+                    },
+                ) {
                     it[SourceMetaTable.value] = value
                 }
             }

@@ -1,17 +1,22 @@
 package suwayomi.tachidesk.graphql.mutations
 
 import graphql.execution.DataFetcherResult
+import graphql.schema.DataFetchingEnvironment
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import suwayomi.tachidesk.graphql.asDataFetcherResult
+import suwayomi.tachidesk.graphql.server.getAttribute
 import suwayomi.tachidesk.graphql.types.UpdateStatus
 import suwayomi.tachidesk.manga.impl.Category
 import suwayomi.tachidesk.manga.impl.update.IUpdater
 import suwayomi.tachidesk.manga.model.table.CategoryTable
 import suwayomi.tachidesk.manga.model.table.toDataClass
+import suwayomi.tachidesk.server.JavalinSetup.Attribute
 import suwayomi.tachidesk.server.JavalinSetup.future
+import suwayomi.tachidesk.server.user.requireUser
 import uy.kohesive.injekt.injectLazy
 import java.util.concurrent.CompletableFuture
 import kotlin.time.Duration.Companion.seconds
@@ -28,15 +33,19 @@ class UpdateMutation {
         val updateStatus: UpdateStatus,
     )
 
-    fun updateLibraryManga(input: UpdateLibraryMangaInput): CompletableFuture<DataFetcherResult<UpdateLibraryMangaPayload?>> {
-        updater.addCategoriesToUpdateQueue(
-            Category.getCategoryList(),
-            clear = true,
-            forceAll = false,
-        )
-
-        return future {
+    fun updateLibraryManga(
+        dataFetchingEnvironment: DataFetchingEnvironment,
+        input: UpdateLibraryMangaInput,
+    ): CompletableFuture<DataFetcherResult<UpdateLibraryMangaPayload?>> =
+        future {
             asDataFetcherResult {
+                val userId = dataFetchingEnvironment.getAttribute(Attribute.TachideskUser).requireUser()
+                updater.addCategoriesToUpdateQueue(
+                    Category.getCategoryList(userId),
+                    clear = true,
+                    forceAll = false,
+                )
+
                 UpdateLibraryMangaPayload(
                     input.clientMutationId,
                     updateStatus =
@@ -46,7 +55,6 @@ class UpdateMutation {
                 )
             }
         }
-    }
 
     data class UpdateCategoryMangaInput(
         val clientMutationId: String? = null,
@@ -58,17 +66,25 @@ class UpdateMutation {
         val updateStatus: UpdateStatus,
     )
 
-    fun updateCategoryManga(input: UpdateCategoryMangaInput): CompletableFuture<DataFetcherResult<UpdateCategoryMangaPayload?>> {
-        val categories =
-            transaction {
-                CategoryTable.selectAll().where { CategoryTable.id inList input.categories }.map {
-                    CategoryTable.toDataClass(it)
-                }
-            }
-        updater.addCategoriesToUpdateQueue(categories, clear = true, forceAll = true)
-
-        return future {
+    fun updateCategoryManga(
+        dataFetchingEnvironment: DataFetchingEnvironment,
+        input: UpdateCategoryMangaInput,
+    ): CompletableFuture<DataFetcherResult<UpdateCategoryMangaPayload?>> =
+        future {
             asDataFetcherResult {
+                val userId = dataFetchingEnvironment.getAttribute(Attribute.TachideskUser).requireUser()
+                val categories =
+                    transaction {
+                        CategoryTable
+                            .selectAll()
+                            .where {
+                                CategoryTable.id inList input.categories and (CategoryTable.user eq userId)
+                            }.map {
+                                CategoryTable.toDataClass(it)
+                            }
+                    }
+                updater.addCategoriesToUpdateQueue(categories, clear = true, forceAll = true)
+
                 UpdateCategoryMangaPayload(
                     input.clientMutationId,
                     updateStatus =
@@ -78,7 +94,6 @@ class UpdateMutation {
                 )
             }
         }
-    }
 
     data class UpdateStopInput(
         val clientMutationId: String? = null,

@@ -13,8 +13,10 @@ import org.dataloader.DataLoader
 import org.dataloader.DataLoaderFactory
 import org.jetbrains.exposed.sql.Slf4jSqlDebugLogger
 import org.jetbrains.exposed.sql.addLogger
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
+import suwayomi.tachidesk.graphql.server.getAttribute
 import suwayomi.tachidesk.graphql.types.TrackRecordNodeList
 import suwayomi.tachidesk.graphql.types.TrackRecordNodeList.Companion.toNodeList
 import suwayomi.tachidesk.graphql.types.TrackRecordType
@@ -23,7 +25,9 @@ import suwayomi.tachidesk.graphql.types.TrackerType
 import suwayomi.tachidesk.manga.impl.track.tracker.TrackerManager
 import suwayomi.tachidesk.manga.impl.track.tracker.model.toTrack
 import suwayomi.tachidesk.manga.model.table.TrackRecordTable
+import suwayomi.tachidesk.server.JavalinSetup.Attribute
 import suwayomi.tachidesk.server.JavalinSetup.future
+import suwayomi.tachidesk.server.user.requireUser
 
 class TrackerDataLoader : KotlinDataLoader<Int, TrackerType> {
     override val dataLoaderName = "TrackerDataLoader"
@@ -31,8 +35,9 @@ class TrackerDataLoader : KotlinDataLoader<Int, TrackerType> {
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<Int, TrackerType> =
         DataLoaderFactory.newDataLoader { ids ->
             future {
+                val userId = graphQLContext.getAttribute(Attribute.TachideskUser).requireUser()
                 ids.map { id ->
-                    TrackerManager.getTracker(id)?.let { TrackerType(it) }
+                    TrackerManager.getTracker(id)?.let { TrackerType(it, userId) }
                 }
             }
         }
@@ -61,8 +66,9 @@ class TrackerScoresDataLoader : KotlinDataLoader<Int, List<String>> {
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<Int, List<String>> =
         DataLoaderFactory.newDataLoader { ids ->
             future {
+                val userId = graphQLContext.getAttribute(Attribute.TachideskUser).requireUser()
                 ids.map { id ->
-                    TrackerManager.getTracker(id)?.getScoreList()
+                    TrackerManager.getTracker(id)?.getScoreList(userId)
                 }
             }
         }
@@ -74,8 +80,9 @@ class TrackerTokenExpiredDataLoader : KotlinDataLoader<Int, Boolean> {
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<Int, Boolean> =
         DataLoaderFactory.newDataLoader { ids ->
             future {
+                val userId = graphQLContext.getAttribute(Attribute.TachideskUser).requireUser()
                 ids.map { id ->
-                    TrackerManager.getTracker(id)?.getIfAuthExpired()
+                    TrackerManager.getTracker(id)?.getIfAuthExpired(userId)
                 }
             }
         }
@@ -87,12 +94,13 @@ class TrackRecordsForMangaIdDataLoader : KotlinDataLoader<Int, TrackRecordNodeLi
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<Int, TrackRecordNodeList> =
         DataLoaderFactory.newDataLoader { ids ->
             future {
+                val userId = graphQLContext.getAttribute(Attribute.TachideskUser).requireUser()
                 transaction {
                     addLogger(Slf4jSqlDebugLogger)
                     val trackRecordsByMangaId =
                         TrackRecordTable
                             .selectAll()
-                            .where { TrackRecordTable.mangaId inList ids }
+                            .where { TrackRecordTable.mangaId inList ids and (TrackRecordTable.user eq userId) }
                             .map { TrackRecordType(it) }
                             .groupBy { it.mangaId }
                     ids.map { (trackRecordsByMangaId[it] ?: emptyList()).toNodeList() }
@@ -107,16 +115,17 @@ class DisplayScoreForTrackRecordDataLoader : KotlinDataLoader<Int, String> {
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<Int, String> =
         DataLoaderFactory.newDataLoader<Int, String> { ids ->
             future {
+                val userId = graphQLContext.getAttribute(Attribute.TachideskUser).requireUser()
                 transaction {
                     addLogger(Slf4jSqlDebugLogger)
                     val trackRecords =
                         TrackRecordTable
                             .selectAll()
-                            .where { TrackRecordTable.id inList ids }
+                            .where { TrackRecordTable.id inList ids and (TrackRecordTable.user eq userId) }
                             .toList()
                             .map { it.toTrack() }
                             .associateBy { it.id!! }
-                            .mapValues { TrackerManager.getTracker(it.value.sync_id)?.displayScore(it.value) }
+                            .mapValues { TrackerManager.getTracker(it.value.sync_id)?.displayScore(userId, it.value) }
 
                     ids.map { trackRecords[it] }
                 }
@@ -130,12 +139,13 @@ class TrackRecordsForTrackerIdDataLoader : KotlinDataLoader<Int, TrackRecordNode
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<Int, TrackRecordNodeList> =
         DataLoaderFactory.newDataLoader { ids ->
             future {
+                val userId = graphQLContext.getAttribute(Attribute.TachideskUser).requireUser()
                 transaction {
                     addLogger(Slf4jSqlDebugLogger)
                     val trackRecordsBySyncId =
                         TrackRecordTable
                             .selectAll()
-                            .where { TrackRecordTable.trackerId inList ids }
+                            .where { TrackRecordTable.trackerId inList ids and (TrackRecordTable.user eq userId) }
                             .map { TrackRecordType(it) }
                             .groupBy { it.trackerId }
                     ids.map { (trackRecordsBySyncId[it] ?: emptyList()).toNodeList() }
@@ -150,12 +160,13 @@ class TrackRecordDataLoader : KotlinDataLoader<Int, TrackRecordType> {
     override fun getDataLoader(graphQLContext: GraphQLContext): DataLoader<Int, TrackRecordType> =
         DataLoaderFactory.newDataLoader { ids ->
             future {
+                val userId = graphQLContext.getAttribute(Attribute.TachideskUser).requireUser()
                 transaction {
                     addLogger(Slf4jSqlDebugLogger)
                     val trackRecordsId =
                         TrackRecordTable
                             .selectAll()
-                            .where { TrackRecordTable.id inList ids }
+                            .where { TrackRecordTable.id inList ids and (TrackRecordTable.user eq userId) }
                             .map { TrackRecordType(it) }
                             .associateBy { it.id }
                     ids.map { trackRecordsId[it] }

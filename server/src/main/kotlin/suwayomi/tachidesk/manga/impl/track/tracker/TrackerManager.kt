@@ -30,5 +30,5 @@ object TrackerManager {
 
     fun getTracker(id: Int) = services.find { it.id == id }
 
-    fun hasLoggedTracker() = services.any { it.isLoggedIn }
+    fun hasLoggedTracker(userId: Int) = services.any { it.isLoggedIn(userId) }
 }

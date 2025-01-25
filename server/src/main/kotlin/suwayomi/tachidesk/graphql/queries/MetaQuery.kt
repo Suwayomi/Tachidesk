@@ -24,6 +24,7 @@ import suwayomi.tachidesk.graphql.queries.filter.OpAnd
 import suwayomi.tachidesk.graphql.queries.filter.StringFilter
 import suwayomi.tachidesk.graphql.queries.filter.andFilterWithCompareString
 import suwayomi.tachidesk.graphql.queries.filter.applyOps
+import suwayomi.tachidesk.graphql.server.getAttribute
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
@@ -35,13 +36,18 @@ import suwayomi.tachidesk.graphql.server.primitives.lessNotUnique
 import suwayomi.tachidesk.graphql.server.primitives.maybeSwap
 import suwayomi.tachidesk.graphql.types.GlobalMetaNodeList
 import suwayomi.tachidesk.graphql.types.GlobalMetaType
+import suwayomi.tachidesk.server.JavalinSetup.Attribute
+import suwayomi.tachidesk.server.user.requireUser
 import java.util.concurrent.CompletableFuture
 
 class MetaQuery {
     fun meta(
         dataFetchingEnvironment: DataFetchingEnvironment,
         key: String,
-    ): CompletableFuture<GlobalMetaType> = dataFetchingEnvironment.getValueFromDataLoader("GlobalMetaDataLoader", key)
+    ): CompletableFuture<GlobalMetaType> {
+        dataFetchingEnvironment.getAttribute(Attribute.TachideskUser).requireUser()
+        return dataFetchingEnvironment.getValueFromDataLoader("GlobalMetaDataLoader", key)
+    }
 
     enum class MetaOrderBy(
         override val column: Column<*>,
@@ -105,6 +111,7 @@ class MetaQuery {
     }
 
     fun metas(
+        dataFetchingEnvironment: DataFetchingEnvironment,
         condition: MetaCondition? = null,
         filter: MetaFilter? = null,
         @GraphQLDeprecated(
@@ -124,9 +131,10 @@ class MetaQuery {
         last: Int? = null,
         offset: Int? = null,
     ): GlobalMetaNodeList {
+        val userId = dataFetchingEnvironment.graphQlContext.getAttribute(Attribute.TachideskUser).requireUser()
         val queryResults =
             transaction {
-                val res = GlobalMetaTable.selectAll()
+                val res = GlobalMetaTable.selectAll().where { GlobalMetaTable.user eq userId }
 
                 res.applyOps(condition, filter)
 

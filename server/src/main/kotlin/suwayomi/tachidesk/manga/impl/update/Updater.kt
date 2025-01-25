@@ -122,7 +122,8 @@ class Updater : IUpdater {
                     lastAutomatedUpdate,
                 )})"
             }
-            addCategoriesToUpdateQueue(Category.getCategoryList(), clear = true, forceAll = false)
+            // todo User accounts
+            addCategoriesToUpdateQueue(Category.getCategoryList(1), clear = true, forceAll = false)
         } catch (e: Exception) {
             logger.error(e) { "autoUpdateTask: failed due to" }
         }
@@ -234,9 +235,9 @@ class Updater : IUpdater {
             try {
                 logger.info { "Updating ${job.manga}" }
                 if (serverConfig.updateMangas.value || !job.manga.initialized) {
-                    Manga.getManga(job.manga.id, true)
+                    Manga.getManga(0, job.manga.id, true)
                 }
-                Chapter.getChapterList(job.manga.id, true)
+                Chapter.getChapterList(0, job.manga.id, true)
                 job.copy(status = JobStatus.COMPLETE)
             } catch (e: Exception) {
                 logger.error(e) { "Error while updating ${job.manga}" }
@@ -287,9 +288,9 @@ class Updater : IUpdater {
 
         val categoriesToUpdateMangas =
             categoriesToUpdate
-                .flatMap { CategoryManga.getCategoryMangaList(it.id) }
+                .flatMap { CategoryManga.getCategoryMangaList(1, it.id) } // todo User accounts
                 .distinctBy { it.id }
-        val mangasToCategoriesMap = CategoryManga.getMangasCategories(categoriesToUpdateMangas.map { it.id })
+        val mangasToCategoriesMap = CategoryManga.getMangasCategories(1, categoriesToUpdateMangas.map { it.id }) // todo User accounts
         val mangasToUpdate =
             categoriesToUpdateMangas
                 .asSequence()

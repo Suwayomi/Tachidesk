@@ -9,6 +9,7 @@ package suwayomi.tachidesk.manga.model.table
 
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.ReferenceOption
+import suwayomi.tachidesk.global.model.table.UserTable
 
 object TrackRecordTable : IntIdTable() {
     val mangaId = reference("manga_id", MangaTable, ReferenceOption.CASCADE)
@@ -23,4 +24,5 @@ object TrackRecordTable : IntIdTable() {
     val remoteUrl = varchar("remote_url", 512)
     val startDate = long("start_date")
     val finishDate = long("finish_date")
+    val user = reference("user", UserTable, ReferenceOption.CASCADE)
 }

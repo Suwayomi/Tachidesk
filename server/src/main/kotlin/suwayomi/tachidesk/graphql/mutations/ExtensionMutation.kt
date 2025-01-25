@@ -2,15 +2,19 @@ package suwayomi.tachidesk.graphql.mutations
 
 import eu.kanade.tachiyomi.source.local.LocalSource
 import graphql.execution.DataFetcherResult
+import graphql.schema.DataFetchingEnvironment
 import io.javalin.http.UploadedFile
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import suwayomi.tachidesk.graphql.asDataFetcherResult
+import suwayomi.tachidesk.graphql.server.getAttribute
 import suwayomi.tachidesk.graphql.types.ExtensionType
 import suwayomi.tachidesk.manga.impl.extension.Extension
 import suwayomi.tachidesk.manga.impl.extension.ExtensionsList
 import suwayomi.tachidesk.manga.model.table.ExtensionTable
+import suwayomi.tachidesk.server.JavalinSetup
 import suwayomi.tachidesk.server.JavalinSetup.future
+import suwayomi.tachidesk.server.user.requireUser
 import java.util.concurrent.CompletableFuture
 
 class ExtensionMutation {
@@ -73,11 +77,15 @@ class ExtensionMutation {
         }
     }
 
-    fun updateExtension(input: UpdateExtensionInput): CompletableFuture<DataFetcherResult<UpdateExtensionPayload?>> {
+    fun updateExtension(
+        dataFetchingEnvironment: DataFetchingEnvironment,
+        input: UpdateExtensionInput,
+    ): CompletableFuture<DataFetcherResult<UpdateExtensionPayload?>> {
         val (clientMutationId, id, patch) = input
 
         return future {
             asDataFetcherResult {
+                dataFetchingEnvironment.getAttribute(JavalinSetup.Attribute.TachideskUser).requireUser()
                 updateExtensions(listOf(id), patch)
 
                 val extension =
@@ -97,11 +105,15 @@ class ExtensionMutation {
         }
     }
 
-    fun updateExtensions(input: UpdateExtensionsInput): CompletableFuture<DataFetcherResult<UpdateExtensionsPayload?>> {
+    fun updateExtensions(
+        dataFetchingEnvironment: DataFetchingEnvironment,
+        input: UpdateExtensionsInput,
+    ): CompletableFuture<DataFetcherResult<UpdateExtensionsPayload?>> {
         val (clientMutationId, ids, patch) = input
 
         return future {
             asDataFetcherResult {
+                dataFetchingEnvironment.getAttribute(JavalinSetup.Attribute.TachideskUser).requireUser()
                 updateExtensions(ids, patch)
 
                 val extensions =
@@ -129,11 +141,15 @@ class ExtensionMutation {
         val extensions: List<ExtensionType>,
     )
 
-    fun fetchExtensions(input: FetchExtensionsInput): CompletableFuture<DataFetcherResult<FetchExtensionsPayload?>> {
+    fun fetchExtensions(
+        dataFetchingEnvironment: DataFetchingEnvironment,
+        input: FetchExtensionsInput,
+    ): CompletableFuture<DataFetcherResult<FetchExtensionsPayload?>> {
         val (clientMutationId) = input
 
         return future {
             asDataFetcherResult {
+                dataFetchingEnvironment.getAttribute(JavalinSetup.Attribute.TachideskUser).requireUser()
                 ExtensionsList.fetchExtensions()
 
                 val extensions =
@@ -163,12 +179,14 @@ class ExtensionMutation {
     )
 
     fun installExternalExtension(
+        dataFetchingEnvironment: DataFetchingEnvironment,
         input: InstallExternalExtensionInput,
     ): CompletableFuture<DataFetcherResult<InstallExternalExtensionPayload?>> {
         val (clientMutationId, extensionFile) = input
 
         return future {
             asDataFetcherResult {
+                dataFetchingEnvironment.getAttribute(JavalinSetup.Attribute.TachideskUser).requireUser()
                 Extension.installExternalExtension(extensionFile.content(), extensionFile.filename())
 
                 val dbExtension =

@@ -145,6 +145,10 @@ cron4j = "it.sauronsoftware.cron4j:cron4j:2.2.5"
 # cron-utils
 cronUtils = "com.cronutils:cron-utils:9.2.1"
 
+# User
+bcrypt = "at.favre.lib:bcrypt:0.10.2"
+jwt = "com.auth0:java-jwt:4.4.0"
+
 # lint - used for renovate to update ktlint version
 ktlint = { module = "com.pinterest.ktlint:ktlint-cli", version.ref = "ktlint" }
 

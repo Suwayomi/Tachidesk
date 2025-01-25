@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.withLock
 import okio.buffer
 import okio.gzip
 import okio.source
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.batchInsert
 import org.jetbrains.exposed.sql.insert
@@ -47,7 +48,9 @@ import suwayomi.tachidesk.manga.impl.track.tracker.model.toTrackRecordDataClass
 import suwayomi.tachidesk.manga.model.dataclass.TrackRecordDataClass
 import suwayomi.tachidesk.manga.model.table.CategoryTable
 import suwayomi.tachidesk.manga.model.table.ChapterTable
+import suwayomi.tachidesk.manga.model.table.ChapterUserTable
 import suwayomi.tachidesk.manga.model.table.MangaTable
+import suwayomi.tachidesk.manga.model.table.MangaUserTable
 import java.io.InputStream
 import java.util.Date
 import java.util.Timer
@@ -118,7 +121,10 @@ object ProtoBackupImport : ProtoBackupBase() {
     }
 
     @OptIn(DelicateCoroutinesApi::class)
-    suspend fun restore(sourceStream: InputStream): String {
+    suspend fun restore(
+        userId: Int,
+        sourceStream: InputStream,
+    ): String {
         val restoreId = System.currentTimeMillis().toString()
 
         logger.info { "restore($restoreId): queued" }
@@ -126,20 +132,21 @@ object ProtoBackupImport : ProtoBackupBase() {
         updateRestoreState(restoreId, BackupRestoreState.Idle)
 
         GlobalScope.launch {
-            restoreLegacy(sourceStream, restoreId)
+            restoreLegacy(userId, sourceStream, restoreId)
         }
 
         return restoreId
     }
 
     suspend fun restoreLegacy(
+        userId: Int,
         sourceStream: InputStream,
         restoreId: String = "legacy",
     ): ValidationResult =
         backupMutex.withLock {
             try {
                 logger.info { "restore($restoreId): restoring..." }
-                performRestore(restoreId, sourceStream)
+                performRestore(userId, restoreId, sourceStream)
             } catch (e: Exception) {
                 logger.error(e) { "restore($restoreId): failed due to" }
 
@@ -157,6 +164,7 @@ object ProtoBackupImport : ProtoBackupBase() {
         }
 
     private fun performRestore(
+        userId: Int,
         id: String,
         sourceStream: InputStream,
     ): ValidationResult {
@@ -168,14 +176,14 @@ object ProtoBackupImport : ProtoBackupBase() {
                 .use { it.readByteArray() }
         val backup = parser.decodeFromByteArray(Backup.serializer(), backupString)
 
-        val validationResult = validate(backup)
+        val validationResult = validate(userId, backup)
 
         restoreAmount = backup.backupManga.size + 1 // +1 for categories
 
         updateRestoreState(id, BackupRestoreState.RestoringCategories(backup.backupManga.size))
         // Restore categories
         if (backup.backupCategories.isNotEmpty()) {
-            restoreCategories(backup.backupCategories)
+            restoreCategories(userId, backup.backupCategories)
         }
 
         val categoryMapping =
@@ -184,7 +192,7 @@ object ProtoBackupImport : ProtoBackupBase() {
                     val dbCategory =
                         CategoryTable
                             .selectAll()
-                            .where { CategoryTable.name eq it.name }
+                            .where { CategoryTable.name eq it.name and (CategoryTable.user eq userId) }
                             .firstOrNull()
                     val categoryId =
                         dbCategory?.let { categoryResultRow ->
@@ -209,6 +217,7 @@ object ProtoBackupImport : ProtoBackupBase() {
             )
 
             restoreManga(
+                userId,
                 backupManga = manga,
                 backupCategories = backup.backupCategories,
                 categoryMapping = categoryMapping,
@@ -234,18 +243,22 @@ object ProtoBackupImport : ProtoBackupBase() {
         return validationResult
     }
 
-    private fun restoreCategories(backupCategories: List<BackupCategory>) {
-        val dbCategories = Category.getCategoryList()
+    private fun restoreCategories(
+        userId: Int,
+        backupCategories: List<BackupCategory>,
+    ) {
+        val dbCategories = Category.getCategoryList(userId)
 
         // Iterate over them and create missing categories
         backupCategories.forEach { category ->
             if (dbCategories.none { it.name == category.name }) {
-                Category.createCategory(category.name)
+                Category.createCategory(userId, category.name)
             }
         }
     }
 
     private fun restoreManga(
+        userId: Int,
         backupManga: BackupManga,
         backupCategories: List<BackupCategory>,
         categoryMapping: Map<Int, Int>,
@@ -256,7 +269,7 @@ object ProtoBackupImport : ProtoBackupBase() {
         val history = backupManga.history
 
         try {
-            restoreMangaData(manga, chapters, categories, history, backupManga.tracking, backupCategories, categoryMapping)
+            restoreMangaData(userId, manga, chapters, categories, history, backupManga.tracking, backupCategories, categoryMapping)
         } catch (e: Exception) {
             val sourceName = sourceMapping[manga.source] ?: manga.source.toString()
             errors.add(Date() to "${manga.title} [$sourceName]: ${e.message}")
@@ -265,6 +278,7 @@ object ProtoBackupImport : ProtoBackupBase() {
 
     @Suppress("UNUSED_PARAMETER") // TODO: remove
     private fun restoreMangaData(
+        userId: Int,
         manga: Manga,
         chapters: List<Chapter>,
         categories: List<Int>,
@@ -302,41 +316,50 @@ object ProtoBackupImport : ProtoBackupBase() {
                                 it[sourceReference] = manga.source
 
                                 it[initialized] = manga.description != null
-
-                                it[inLibrary] = manga.favorite
-
-                                it[inLibraryAt] = TimeUnit.MILLISECONDS.toSeconds(manga.date_added)
                             }.value
+
+                    MangaUserTable.insert {
+                        it[MangaUserTable.manga] = mangaId
+                        it[MangaUserTable.user] = userId
+                        it[MangaUserTable.inLibrary] = manga.favorite
+                        it[MangaUserTable.inLibraryAt] = TimeUnit.MILLISECONDS.toSeconds(manga.date_added)
+                    }
 
                     // delete thumbnail in case cached data still exists
                     clearThumbnail(mangaId)
 
                     // insert chapter data
                     val chaptersLength = chapters.size
-                    ChapterTable.batchInsert(chapters) { chapter ->
-                        this[ChapterTable.url] = chapter.url
-                        this[ChapterTable.name] = chapter.name
-                        if (chapter.date_upload == 0L) {
-                            this[ChapterTable.date_upload] = chapter.date_fetch
-                        } else {
-                            this[ChapterTable.date_upload] = chapter.date_upload
+                    val rows =
+                        ChapterTable.batchInsert(chapters) { chapter ->
+                            this[ChapterTable.url] = chapter.url
+                            this[ChapterTable.name] = chapter.name
+                            if (chapter.date_upload == 0L) {
+                                this[ChapterTable.date_upload] = chapter.date_fetch
+                            } else {
+                                this[ChapterTable.date_upload] = chapter.date_upload
+                            }
+                            this[ChapterTable.chapter_number] = chapter.chapter_number
+                            this[ChapterTable.scanlator] = chapter.scanlator
+
+                            this[ChapterTable.sourceOrder] = chaptersLength - chapter.source_order
+                            this[ChapterTable.manga] = mangaId
+
+                            this[ChapterTable.fetchedAt] = TimeUnit.MILLISECONDS.toSeconds(chapter.date_fetch)
                         }
-                        this[ChapterTable.chapter_number] = chapter.chapter_number
-                        this[ChapterTable.scanlator] = chapter.scanlator
 
-                        this[ChapterTable.sourceOrder] = chaptersLength - chapter.source_order
-                        this[ChapterTable.manga] = mangaId
-
-                        this[ChapterTable.isRead] = chapter.read
-                        this[ChapterTable.lastPageRead] = chapter.last_page_read
-                        this[ChapterTable.isBookmarked] = chapter.bookmark
-
-                        this[ChapterTable.fetchedAt] = TimeUnit.MILLISECONDS.toSeconds(chapter.date_fetch)
+                    ChapterUserTable.batchInsert(rows) { row ->
+                        val chapter = chapters.first { it.url == row[ChapterTable.url] }
+                        this[ChapterUserTable.chapter] = row[ChapterTable.id].value
+                        this[ChapterUserTable.user] = userId
+                        this[ChapterUserTable.isRead] = chapter.read
+                        this[ChapterUserTable.lastPageRead] = chapter.last_page_read
+                        this[ChapterUserTable.isBookmarked] = chapter.bookmark
                     }
 
                     // insert categories
                     categories.forEach { backupCategoryOrder ->
-                        CategoryManga.addMangaToCategory(mangaId, categoryMapping[backupCategoryOrder]!!)
+                        CategoryManga.addMangaToCategory(userId, mangaId, categoryMapping[backupCategoryOrder]!!)
                     }
 
                     mangaId
@@ -356,10 +379,26 @@ object ProtoBackupImport : ProtoBackupBase() {
                         it[updateStrategy] = manga.update_strategy.name
 
                         it[initialized] = dbManga[initialized] || manga.description != null
+                    }
 
-                        it[inLibrary] = manga.favorite || dbManga[inLibrary]
-
-                        it[inLibraryAt] = TimeUnit.MILLISECONDS.toSeconds(manga.date_added)
+                    val mangaUserData =
+                        MangaUserTable
+                            .selectAll()
+                            .where {
+                                MangaUserTable.user eq userId and (MangaUserTable.manga eq mangaId)
+                            }.firstOrNull()
+                    if (mangaUserData != null) {
+                        MangaUserTable.update({ MangaUserTable.id eq mangaUserData[ChapterUserTable.id] }) {
+                            it[MangaUserTable.inLibrary] = manga.favorite || mangaUserData[MangaUserTable.inLibrary]
+                            it[MangaUserTable.inLibraryAt] = TimeUnit.MILLISECONDS.toSeconds(manga.date_added)
+                        }
+                    } else {
+                        MangaUserTable.insert {
+                            it[MangaUserTable.manga] = mangaId
+                            it[MangaUserTable.user] = userId
+                            it[MangaUserTable.inLibrary] = manga.favorite
+                            it[MangaUserTable.inLibraryAt] = TimeUnit.MILLISECONDS.toSeconds(manga.date_added)
+                        }
                     }
 
                     // merge chapter data
@@ -370,36 +409,62 @@ object ProtoBackupImport : ProtoBackupBase() {
                         val dbChapter = dbChapters.find { it[ChapterTable.url] == chapter.url }
 
                         if (dbChapter == null) {
-                            ChapterTable.insert {
-                                it[url] = chapter.url
-                                it[name] = chapter.name
-                                if (chapter.date_upload == 0L) {
-                                    it[date_upload] = chapter.date_fetch
-                                } else {
-                                    it[date_upload] = chapter.date_upload
+                            val chapterId =
+                                ChapterTable.insertAndGetId {
+                                    it[url] = chapter.url
+                                    it[name] = chapter.name
+                                    if (chapter.date_upload == 0L) {
+                                        it[date_upload] = chapter.date_fetch
+                                    } else {
+                                        it[date_upload] = chapter.date_upload
+                                    }
+                                    it[chapter_number] = chapter.chapter_number
+                                    it[scanlator] = chapter.scanlator
+
+                                    it[sourceOrder] = chaptersLength - chapter.source_order
+                                    it[ChapterTable.manga] = mangaId
                                 }
-                                it[chapter_number] = chapter.chapter_number
-                                it[scanlator] = chapter.scanlator
 
-                                it[sourceOrder] = chaptersLength - chapter.source_order
-                                it[ChapterTable.manga] = mangaId
-
-                                it[isRead] = chapter.read
-                                it[lastPageRead] = chapter.last_page_read
-                                it[isBookmarked] = chapter.bookmark
+                            ChapterUserTable.insert {
+                                it[ChapterUserTable.chapter] = mangaId
+                                it[ChapterUserTable.user] = userId
+                                it[ChapterUserTable.isRead] = chapter.read
+                                it[ChapterUserTable.lastPageRead] = chapter.last_page_read
+                                it[ChapterUserTable.isBookmarked] = chapter.bookmark
                             }
                         } else {
-                            ChapterTable.update({ (ChapterTable.url eq dbChapter[ChapterTable.url]) and (ChapterTable.manga eq mangaId) }) {
-                                it[isRead] = chapter.read || dbChapter[isRead]
-                                it[lastPageRead] = max(chapter.last_page_read, dbChapter[lastPageRead])
-                                it[isBookmarked] = chapter.bookmark || dbChapter[isBookmarked]
+                            val chapterId = dbChapter[ChapterTable.id].value
+                            val chapterUserData =
+                                ChapterUserTable
+                                    .selectAll()
+                                    .where {
+                                        MangaUserTable.user eq userId and (ChapterUserTable.chapter eq chapterId)
+                                    }.firstOrNull()
+                            if (chapterUserData != null) {
+                                ChapterUserTable.update({ ChapterUserTable.id eq chapterUserData[ChapterUserTable.id] }) {
+                                    it[isRead] = chapter.read || chapterUserData[isRead]
+                                    it[lastPageRead] =
+                                        max(
+                                            chapter.last_page_read,
+                                            chapterUserData[lastPageRead],
+                                        )
+                                    it[isBookmarked] = chapter.bookmark || chapterUserData[isBookmarked]
+                                }
+                            } else {
+                                ChapterUserTable.insert {
+                                    it[ChapterUserTable.chapter] = chapterId
+                                    it[MangaUserTable.user] = userId
+                                    it[isRead] = chapter.read
+                                    it[lastPageRead] = chapter.last_page_read
+                                    it[isBookmarked] = chapter.bookmark
+                                }
                             }
                         }
                     }
 
                     // merge categories
                     categories.forEach { backupCategoryOrder ->
-                        CategoryManga.addMangaToCategory(mangaId, categoryMapping[backupCategoryOrder]!!)
+                        CategoryManga.addMangaToCategory(userId, mangaId, categoryMapping[backupCategoryOrder]!!)
                     }
 
                     mangaId
@@ -408,7 +473,7 @@ object ProtoBackupImport : ProtoBackupBase() {
 
         val dbTrackRecordsByTrackerId =
             Tracker
-                .getTrackRecordsByMangaId(mangaId)
+                .getTrackRecordsByMangaId(userId, mangaId)
                 .mapNotNull { it.record?.toTrack() }
                 .associateBy { it.sync_id }
 
@@ -438,8 +503,8 @@ object ProtoBackupImport : ProtoBackupBase() {
                     }
                 }.partition { (it.id ?: -1) > 0 }
 
-        existingTracks.forEach(Tracker::updateTrackRecord)
-        newTracks.forEach(Tracker::insertTrackRecord)
+        existingTracks.forEach { Tracker.updateTrackRecord(userId, it) }
+        newTracks.forEach { Tracker.insertTrackRecord(userId, it) }
 
         // TODO: insert/merge history
     }

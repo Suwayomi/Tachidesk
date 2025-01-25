@@ -27,6 +27,7 @@ import suwayomi.tachidesk.graphql.queries.filter.andFilterWithCompare
 import suwayomi.tachidesk.graphql.queries.filter.andFilterWithCompareEntity
 import suwayomi.tachidesk.graphql.queries.filter.andFilterWithCompareString
 import suwayomi.tachidesk.graphql.queries.filter.applyOps
+import suwayomi.tachidesk.graphql.server.getAttribute
 import suwayomi.tachidesk.graphql.server.primitives.Cursor
 import suwayomi.tachidesk.graphql.server.primitives.Order
 import suwayomi.tachidesk.graphql.server.primitives.OrderBy
@@ -39,13 +40,18 @@ import suwayomi.tachidesk.graphql.server.primitives.maybeSwap
 import suwayomi.tachidesk.graphql.types.CategoryNodeList
 import suwayomi.tachidesk.graphql.types.CategoryType
 import suwayomi.tachidesk.manga.model.table.CategoryTable
+import suwayomi.tachidesk.server.JavalinSetup.Attribute
+import suwayomi.tachidesk.server.user.requireUser
 import java.util.concurrent.CompletableFuture
 
 class CategoryQuery {
     fun category(
         dataFetchingEnvironment: DataFetchingEnvironment,
         id: Int,
-    ): CompletableFuture<CategoryType> = dataFetchingEnvironment.getValueFromDataLoader("CategoryDataLoader", id)
+    ): CompletableFuture<CategoryType> {
+        dataFetchingEnvironment.getAttribute(Attribute.TachideskUser).requireUser()
+        return dataFetchingEnvironment.getValueFromDataLoader("CategoryDataLoader", id)
+    }
 
     enum class CategoryOrderBy(
         override val column: Column<*>,
@@ -121,6 +127,7 @@ class CategoryQuery {
     }
 
     fun categories(
+        dataFetchingEnvironment: DataFetchingEnvironment,
         condition: CategoryCondition? = null,
         filter: CategoryFilter? = null,
         @GraphQLDeprecated(
@@ -140,9 +147,10 @@ class CategoryQuery {
         last: Int? = null,
         offset: Int? = null,
     ): CategoryNodeList {
+        val userId = dataFetchingEnvironment.getAttribute(Attribute.TachideskUser).requireUser()
         val queryResults =
             transaction {
-                val res = CategoryTable.selectAll()
+                val res = CategoryTable.selectAll().where { CategoryTable.user eq userId }
 
                 res.applyOps(condition, filter)
 

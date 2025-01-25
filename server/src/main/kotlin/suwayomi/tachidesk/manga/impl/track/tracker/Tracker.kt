@@ -22,7 +22,7 @@ abstract class Tracker(
 
     abstract val supportsTrackDeletion: Boolean
 
-    override fun toString() = "$name ($id) (isLoggedIn= $isLoggedIn, isAuthExpired= ${getIfAuthExpired()})"
+    override fun toString() = "$name ($id)"
 
     abstract fun getLogo(): String
 
@@ -36,60 +36,77 @@ abstract class Tracker(
 
     abstract fun getCompletionStatus(): Int
 
-    abstract fun getScoreList(): List<String>
+    abstract fun getScoreList(userId: Int): List<String>
 
-    open fun indexToScore(index: Int): Float = index.toFloat()
+    open fun indexToScore(
+        userId: Int,
+        index: Int,
+    ): Float = index.toFloat()
 
-    abstract fun displayScore(track: Track): String
+    abstract fun displayScore(
+        userId: Int,
+        track: Track,
+    ): String
 
     abstract suspend fun update(
+        userId: Int,
         track: Track,
         didReadChapter: Boolean = false,
     ): Track
 
     abstract suspend fun bind(
+        userId: Int,
         track: Track,
         hasReadChapters: Boolean = false,
     ): Track
 
-    abstract suspend fun search(query: String): List<TrackSearch>
+    abstract suspend fun search(
+        userId: Int,
+        query: String,
+    ): List<TrackSearch>
 
-    abstract suspend fun refresh(track: Track): Track
+    abstract suspend fun refresh(
+        userId: Int,
+        track: Track,
+    ): Track
 
     open fun authUrl(): String? = null
 
-    open suspend fun authCallback(url: String) {}
+    open suspend fun authCallback(
+        userId: Int,
+        url: String,
+    ) {}
 
     abstract suspend fun login(
+        userId: Int,
         username: String,
         password: String,
     )
 
-    open fun logout() {
-        trackPreferences.setTrackCredentials(this, "", "")
+    open suspend fun logout(userId: Int) {
+        trackPreferences.setTrackCredentials(userId, this, "", "")
     }
 
-    open val isLoggedIn: Boolean
-        get() {
-            return getUsername().isNotEmpty() &&
-                getPassword().isNotEmpty()
-        }
+    open fun isLoggedIn(userId: Int): Boolean =
+        getUsername(userId).isNotEmpty() &&
+            getPassword(userId).isNotEmpty()
 
-    fun getUsername() = trackPreferences.getTrackUsername(this) ?: ""
+    fun getUsername(userId: Int) = trackPreferences.getTrackUsername(userId, this) ?: ""
 
-    fun getPassword() = trackPreferences.getTrackPassword(this) ?: ""
+    fun getPassword(userId: Int) = trackPreferences.getTrackPassword(userId, this) ?: ""
 
     fun saveCredentials(
+        userId: Int,
         username: String,
         password: String,
     ) {
-        trackPreferences.setTrackCredentials(this, username, password)
+        trackPreferences.setTrackCredentials(userId, this, username, password)
     }
 
-    fun getIfAuthExpired(): Boolean = trackPreferences.trackAuthExpired(this)
+    fun getIfAuthExpired(userId: Int): Boolean = trackPreferences.trackAuthExpired(userId, this)
 
-    fun setAuthExpired() {
-        trackPreferences.setTrackTokenExpired(this)
+    fun setAuthExpired(userId: Int) {
+        trackPreferences.setTrackTokenExpired(userId, this)
     }
 }
 

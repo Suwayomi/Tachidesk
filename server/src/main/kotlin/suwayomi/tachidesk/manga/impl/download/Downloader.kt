@@ -131,7 +131,7 @@ class Downloader(
                 download.state = Downloading
                 step(DownloadUpdate(PROGRESS, download), true)
 
-                download.chapter = getChapterDownloadReadyByIndex(download.chapterIndex, download.mangaId)
+                download.chapter = getChapterDownloadReadyByIndex(0, download.chapterIndex, download.mangaId)
 
                 ChapterDownloadHelper.download(download.mangaId, download.chapter.id, download, scope) { downloadChapter, immediate ->
                     step(downloadChapter?.let { DownloadUpdate(PROGRESS, downloadChapter) }, immediate)

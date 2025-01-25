@@ -1,5 +1,6 @@
 package suwayomi.tachidesk.manga.impl.track.tracker.mangaupdates
 
+import io.github.reactivecircus.cache4k.Cache
 import suwayomi.tachidesk.manga.impl.track.tracker.DeletableTrackService
 import suwayomi.tachidesk.manga.impl.track.tracker.Tracker
 import suwayomi.tachidesk.manga.impl.track.tracker.mangaupdates.dto.ListItem
@@ -8,6 +9,7 @@ import suwayomi.tachidesk.manga.impl.track.tracker.mangaupdates.dto.copyTo
 import suwayomi.tachidesk.manga.impl.track.tracker.mangaupdates.dto.toTrackSearch
 import suwayomi.tachidesk.manga.impl.track.tracker.model.Track
 import suwayomi.tachidesk.manga.impl.track.tracker.model.TrackSearch
+import kotlin.time.Duration.Companion.hours
 
 class MangaUpdates(
     id: Int,
@@ -36,9 +38,26 @@ class MangaUpdates(
 
     override val supportsTrackDeletion: Boolean = true
 
-    private val interceptor by lazy { MangaUpdatesInterceptor(this) }
+    private val interceptors =
+        Cache
+            .Builder<Int, MangaUpdatesInterceptor>()
+            .expireAfterAccess(1.hours)
+            .build()
+    private val apis =
+        Cache
+            .Builder<Int, MangaUpdatesApi>()
+            .expireAfterAccess(1.hours)
+            .build()
 
-    private val api by lazy { MangaUpdatesApi(interceptor, client) }
+    suspend fun interceptor(userId: Int): MangaUpdatesInterceptor =
+        interceptors.get(userId) {
+            MangaUpdatesInterceptor(userId, this)
+        }
+
+    suspend fun api(userId: Int): MangaUpdatesApi =
+        apis.get(userId) {
+            MangaUpdatesApi(interceptor(userId), client)
+        }
 
     override fun getLogo(): String = "/static/tracker/manga_updates.png"
 
@@ -60,49 +79,66 @@ class MangaUpdates(
 
     override fun getCompletionStatus(): Int = COMPLETE_LIST
 
-    override fun getScoreList(): List<String> = SCORE_LIST
+    override fun getScoreList(userId: Int): List<String> = SCORE_LIST
 
-    override fun indexToScore(index: Int): Float = if (index == 0) 0f else SCORE_LIST[index].toFloat()
+    override fun indexToScore(
+        userId: Int,
+        index: Int,
+    ): Float = if (index == 0) 0f else SCORE_LIST[index].toFloat()
 
-    override fun displayScore(track: Track): String = track.score.toString()
+    override fun displayScore(
+        userId: Int,
+        track: Track,
+    ): String = track.score.toString()
 
     override suspend fun update(
+        userId: Int,
         track: Track,
         didReadChapter: Boolean,
     ): Track {
         if (track.status != COMPLETE_LIST && didReadChapter) {
             track.status = READING_LIST
         }
-        api.updateSeriesListItem(track)
+        api(userId).updateSeriesListItem(track)
         return track
     }
 
-    override suspend fun delete(track: Track) {
-        api.deleteSeriesFromList(track)
+    override suspend fun delete(
+        userId: Int,
+        track: Track,
+    ) {
+        api(userId).deleteSeriesFromList(track)
     }
 
     override suspend fun bind(
+        userId: Int,
         track: Track,
         hasReadChapters: Boolean,
     ): Track =
         try {
-            val (series, rating) = api.getSeriesListItem(track)
+            val (series, rating) = api(userId).getSeriesListItem(track)
             track.copyFrom(series, rating)
         } catch (e: Exception) {
             track.score = 0f
-            api.addSeriesToList(track, hasReadChapters)
+            api(userId).addSeriesToList(track, hasReadChapters)
             track
         }
 
-    override suspend fun search(query: String): List<TrackSearch> =
-        api
+    override suspend fun search(
+        userId: Int,
+        query: String,
+    ): List<TrackSearch> =
+        api(userId)
             .search(query)
             .map {
                 it.toTrackSearch(id)
             }
 
-    override suspend fun refresh(track: Track): Track {
-        val (series, rating) = api.getSeriesListItem(track)
+    override suspend fun refresh(
+        userId: Int,
+        track: Track,
+    ): Track {
+        val (series, rating) = api(userId).getSeriesListItem(track)
         return track.copyFrom(series, rating)
     }
 
@@ -116,13 +152,14 @@ class MangaUpdates(
         }
 
     override suspend fun login(
+        userId: Int,
         username: String,
         password: String,
     ) {
-        val authenticated = api.authenticate(username, password) ?: throw Throwable("Unable to login")
-        saveCredentials(authenticated.uid.toString(), authenticated.sessionToken)
-        interceptor.newAuth(authenticated.sessionToken)
+        val authenticated = api(userId).authenticate(username, password) ?: throw Throwable("Unable to login")
+        saveCredentials(userId, authenticated.uid.toString(), authenticated.sessionToken)
+        interceptor(userId).newAuth(authenticated.sessionToken)
     }
 
-    fun restoreSession(): String? = trackPreferences.getTrackPassword(this)
+    fun restoreSession(userId: Int): String? = trackPreferences.getTrackPassword(userId, this)
 }

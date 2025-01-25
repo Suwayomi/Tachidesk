@@ -94,6 +94,9 @@ dependencies {
     implementation(libs.cron4j)
 
     implementation(libs.cronUtils)
+
+    implementation(libs.bcrypt)
+    implementation(libs.jwt)
 }
 
 application {

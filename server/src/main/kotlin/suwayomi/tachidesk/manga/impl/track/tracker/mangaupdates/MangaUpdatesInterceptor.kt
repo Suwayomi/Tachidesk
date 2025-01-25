@@ -6,9 +6,10 @@ import suwayomi.tachidesk.server.generated.BuildConfig
 import java.io.IOException
 
 class MangaUpdatesInterceptor(
+    userId: Int,
     mangaUpdates: MangaUpdates,
 ) : Interceptor {
-    private var token: String? = mangaUpdates.restoreSession()
+    private var token: String? = mangaUpdates.restoreSession(userId)
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()

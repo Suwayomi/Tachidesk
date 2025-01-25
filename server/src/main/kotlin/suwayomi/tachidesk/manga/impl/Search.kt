@@ -20,16 +20,18 @@ import uy.kohesive.injekt.injectLazy
 
 object Search {
     suspend fun sourceSearch(
+        userId: Int,
         sourceId: Long,
         searchTerm: String,
         pageNum: Int,
     ): PagedMangaListDataClass {
         val source = getCatalogueSourceOrStub(sourceId)
         val searchManga = source.getSearchManga(pageNum, searchTerm, getFilterListOf(source))
-        return searchManga.processEntries(sourceId)
+        return searchManga.processEntries(userId, sourceId)
     }
 
     suspend fun sourceFilter(
+        userId: Int,
         sourceId: Long,
         pageNum: Int,
         filter: FilterData,
@@ -37,7 +39,7 @@ object Search {
         val source = getCatalogueSourceOrStub(sourceId)
         val filterList = if (filter.filter != null) buildFilterList(sourceId, filter.filter) else source.getFilterList()
         val searchManga = source.getSearchManga(pageNum, filter.searchTerm ?: "", filterList)
-        return searchManga.processEntries(sourceId)
+        return searchManga.processEntries(userId, sourceId)
     }
 
     private val filterListCache = mutableMapOf<Long, FilterList>()

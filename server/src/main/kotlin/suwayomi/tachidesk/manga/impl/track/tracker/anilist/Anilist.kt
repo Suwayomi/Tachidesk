@@ -2,6 +2,7 @@ package suwayomi.tachidesk.manga.impl.track.tracker.anilist
 
 import android.annotation.StringRes
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.reactivecircus.cache4k.Cache
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import suwayomi.tachidesk.manga.impl.track.tracker.DeletableTrackService
@@ -11,6 +12,7 @@ import suwayomi.tachidesk.manga.impl.track.tracker.model.Track
 import suwayomi.tachidesk.manga.impl.track.tracker.model.TrackSearch
 import uy.kohesive.injekt.injectLazy
 import java.io.IOException
+import kotlin.time.Duration.Companion.hours
 
 class Anilist(
     id: Int,
@@ -35,9 +37,26 @@ class Anilist(
 
     private val json: Json by injectLazy()
 
-    private val interceptor by lazy { AnilistInterceptor(this) }
+    private val interceptors =
+        Cache
+            .Builder<Int, AnilistInterceptor>()
+            .expireAfterAccess(1.hours)
+            .build()
+    private val apis =
+        Cache
+            .Builder<Int, AnilistApi>()
+            .expireAfterAccess(1.hours)
+            .build()
 
-    private val api by lazy { AnilistApi(client, interceptor) }
+    suspend fun interceptor(userId: Int): AnilistInterceptor =
+        interceptors.get(userId) {
+            AnilistInterceptor(userId, this)
+        }
+
+    suspend fun api(userId: Int): AnilistApi =
+        apis.get(userId) {
+            AnilistApi(client, interceptor(userId))
+        }
 
     override val supportsReadingDates: Boolean = true
 
@@ -65,8 +84,8 @@ class Anilist(
 
     override fun getCompletionStatus(): Int = COMPLETED
 
-    override fun getScoreList(): List<String> =
-        when (trackPreferences.getScoreType(this)) {
+    override fun getScoreList(userId: Int): List<String> =
+        when (trackPreferences.getScoreType(userId, this)) {
             // 10 point
             POINT_10 -> IntRange(0, 10).map(Int::toString)
             // 100 point
@@ -80,8 +99,11 @@ class Anilist(
             else -> throw Exception("Unknown score type")
         }
 
-    override fun indexToScore(index: Int): Float =
-        when (trackPreferences.getScoreType(this)) {
+    override fun indexToScore(
+        userId: Int,
+        index: Int,
+    ): Float =
+        when (trackPreferences.getScoreType(userId, this)) {
             // 10 point
             POINT_10 -> index * 10f
             // 100 point
@@ -103,9 +125,12 @@ class Anilist(
             else -> throw Exception("Unknown score type")
         }
 
-    override fun displayScore(track: Track): String {
+    override fun displayScore(
+        userId: Int,
+        track: Track,
+    ): String {
         val score = track.score
-        return when (val type = trackPreferences.getScoreType(this)) {
+        return when (val type = trackPreferences.getScoreType(userId, this)) {
             POINT_5 ->
                 when (score) {
                     0f -> "0 ★"
@@ -122,16 +147,20 @@ class Anilist(
         }
     }
 
-    private suspend fun add(track: Track): Track = api.addLibManga(track)
+    private suspend fun add(
+        userId: Int,
+        track: Track,
+    ): Track = api(userId).addLibManga(track)
 
     override suspend fun update(
+        userId: Int,
         track: Track,
         didReadChapter: Boolean,
     ): Track {
         // If user was using API v1 fetch library_id
         if (track.library_id == null || track.library_id!! == 0L) {
             val libManga =
-                api.findLibManga(track, getUsername().toInt())
+                api(userId).findLibManga(track, getUsername(userId).toInt())
                     ?: throw Exception("$track not found on user library")
             track.library_id = libManga.library_id
         }
@@ -150,23 +179,27 @@ class Anilist(
             }
         }
 
-        return api.updateLibManga(track)
+        return api(userId).updateLibManga(track)
     }
 
-    override suspend fun delete(track: Track) {
+    override suspend fun delete(
+        userId: Int,
+        track: Track,
+    ) {
         if (track.library_id == null || track.library_id!! == 0L) {
-            val libManga = api.findLibManga(track, getUsername().toInt()) ?: return
+            val libManga = api(userId).findLibManga(track, getUsername(userId).toInt()) ?: return
             track.library_id = libManga.library_id
         }
 
-        api.deleteLibManga(track)
+        api(userId).deleteLibManga(track)
     }
 
     override suspend fun bind(
+        userId: Int,
         track: Track,
         hasReadChapters: Boolean,
     ): Track {
-        val remoteTrack = api.findLibManga(track, getUsername().toInt())
+        val remoteTrack = api(userId).findLibManga(track, getUsername(userId).toInt())
         return if (remoteTrack != null) {
             track.copyPersonalFrom(remoteTrack)
             track.library_id = remoteTrack.library_id
@@ -176,19 +209,25 @@ class Anilist(
                 track.status = if (isRereading.not() && hasReadChapters) READING else track.status
             }
 
-            update(track)
+            update(userId, track)
         } else {
             // Set default fields if it's not found in the list
             track.status = if (hasReadChapters) READING else PLAN_TO_READ
             track.score = 0F
-            add(track)
+            add(userId, track)
         }
     }
 
-    override suspend fun search(query: String): List<TrackSearch> = api.search(query)
+    override suspend fun search(
+        userId: Int,
+        query: String,
+    ): List<TrackSearch> = api(userId).search(query)
 
-    override suspend fun refresh(track: Track): Track {
-        val remoteTrack = api.getLibManga(track, getUsername().toInt())
+    override suspend fun refresh(
+        userId: Int,
+        track: Track,
+    ): Track {
+        val remoteTrack = api(userId).getLibManga(track, getUsername(userId).toInt())
         track.copyPersonalFrom(remoteTrack)
         track.title = remoteTrack.title
         track.total_chapters = remoteTrack.total_chapters
@@ -197,44 +236,54 @@ class Anilist(
 
     override fun authUrl(): String = AnilistApi.authUrl().toString()
 
-    override suspend fun authCallback(url: String) {
+    override suspend fun authCallback(
+        userId: Int,
+        url: String,
+    ) {
         val token = url.extractToken("access_token") ?: throw IOException("cannot find token")
-        login(token)
+        login(userId, token)
     }
 
     override suspend fun login(
+        userId: Int,
         username: String,
         password: String,
-    ) = login(password)
+    ) = login(userId, password)
 
-    private suspend fun login(token: String) {
+    private suspend fun login(
+        userId: Int,
+        token: String,
+    ) {
         try {
             logger.debug { "login $token" }
-            val oauth = api.createOAuth(token)
-            interceptor.setAuth(oauth)
-            val (username, scoreType) = api.getCurrentUser()
-            trackPreferences.setScoreType(this, scoreType)
-            saveCredentials(username.toString(), oauth.access_token)
+            val oauth = api(userId).createOAuth(token)
+            interceptor(userId).setAuth(oauth)
+            val (username, scoreType) = api(userId).getCurrentUser()
+            trackPreferences.setScoreType(userId, this, scoreType)
+            saveCredentials(userId, username.toString(), oauth.access_token)
         } catch (e: Throwable) {
             logger.error(e) { "oauth err" }
-            logout()
+            logout(userId)
             throw e
         }
     }
 
-    override fun logout() {
-        super.logout()
-        trackPreferences.setTrackToken(this, null)
-        interceptor.setAuth(null)
+    override suspend fun logout(userId: Int) {
+        super.logout(userId)
+        trackPreferences.setTrackToken(userId, this, null)
+        interceptor(userId).setAuth(null)
     }
 
-    fun saveOAuth(oAuth: OAuth?) {
-        trackPreferences.setTrackToken(this, json.encodeToString(oAuth))
+    fun saveOAuth(
+        userId: Int,
+        oAuth: OAuth?,
+    ) {
+        trackPreferences.setTrackToken(userId, this, json.encodeToString(oAuth))
     }
 
-    fun loadOAuth(): OAuth? =
+    fun loadOAuth(userId: Int): OAuth? =
         try {
-            json.decodeFromString<OAuth>(trackPreferences.getTrackToken(this)!!)
+            json.decodeFromString<OAuth>(trackPreferences.getTrackToken(userId, this)!!)
         } catch (e: Exception) {
             logger.error(e) { "loadOAuth err" }
             null

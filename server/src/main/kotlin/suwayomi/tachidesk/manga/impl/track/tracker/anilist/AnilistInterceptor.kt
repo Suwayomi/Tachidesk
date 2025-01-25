@@ -6,6 +6,7 @@ import suwayomi.tachidesk.manga.impl.track.tracker.TokenExpired
 import java.io.IOException
 
 class AnilistInterceptor(
+    private val userId: Int,
     private val anilist: Anilist,
 ) : Interceptor {
     /**
@@ -20,18 +21,18 @@ class AnilistInterceptor(
         }
 
     init {
-        oauth = anilist.loadOAuth()
+        oauth = anilist.loadOAuth(userId)
     }
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        if (anilist.getIfAuthExpired()) {
+        if (anilist.getIfAuthExpired(userId)) {
             throw TokenExpired()
         }
         val originalRequest = chain.request()
 
         // Refresh access token if null or expired.
         if (oauth?.isExpired() == true) {
-            anilist.setAuthExpired()
+            anilist.setAuthExpired(userId)
             throw TokenExpired()
         }
 
@@ -56,6 +57,6 @@ class AnilistInterceptor(
      */
     fun setAuth(oauth: OAuth?) {
         this.oauth = oauth
-        anilist.saveOAuth(oauth)
+        anilist.saveOAuth(userId, oauth)
     }
 }

@@ -1,13 +1,17 @@
 package suwayomi.tachidesk.graphql.mutations
 
+import graphql.schema.DataFetchingEnvironment
 import kotlinx.coroutines.flow.MutableStateFlow
+import suwayomi.tachidesk.graphql.server.getAttribute
 import suwayomi.tachidesk.graphql.types.PartialSettingsType
 import suwayomi.tachidesk.graphql.types.Settings
 import suwayomi.tachidesk.graphql.types.SettingsType
 import suwayomi.tachidesk.manga.impl.extension.ExtensionsList.repoMatchRegex
+import suwayomi.tachidesk.server.JavalinSetup.Attribute
 import suwayomi.tachidesk.server.SERVER_CONFIG_MODULE_NAME
 import suwayomi.tachidesk.server.ServerConfig
 import suwayomi.tachidesk.server.serverConfig
+import suwayomi.tachidesk.server.user.requireUser
 import xyz.nulldev.ts.config.GlobalConfigManager
 import java.io.File
 
@@ -153,6 +157,7 @@ class SettingsMutation {
         updateSetting(settings.basicAuthEnabled, serverConfig.basicAuthEnabled)
         updateSetting(settings.basicAuthUsername, serverConfig.basicAuthUsername)
         updateSetting(settings.basicAuthPassword, serverConfig.basicAuthPassword)
+        updateSetting(settings.multiUser, serverConfig.multiUser)
 
         // misc
         updateSetting(settings.debugLogsEnabled, serverConfig.debugLogsEnabled)
@@ -179,7 +184,11 @@ class SettingsMutation {
         updateSetting(settings.flareSolverrAsResponseFallback, serverConfig.flareSolverrAsResponseFallback)
     }
 
-    fun setSettings(input: SetSettingsInput): SetSettingsPayload {
+    fun setSettings(
+        dataFetchingEnvironment: DataFetchingEnvironment,
+        input: SetSettingsInput,
+    ): SetSettingsPayload {
+        dataFetchingEnvironment.getAttribute(Attribute.TachideskUser).requireUser()
         val (clientMutationId, settings) = input
 
         validateSettings(settings)
@@ -197,7 +206,11 @@ class SettingsMutation {
         val settings: SettingsType,
     )
 
-    fun resetSettings(input: ResetSettingsInput): ResetSettingsPayload {
+    fun resetSettings(
+        dataFetchingEnvironment: DataFetchingEnvironment,
+        input: ResetSettingsInput,
+    ): ResetSettingsPayload {
+        dataFetchingEnvironment.getAttribute(Attribute.TachideskUser).requireUser()
         val (clientMutationId) = input
 
         GlobalConfigManager.resetUserConfig()
