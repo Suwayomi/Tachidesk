@@ -66,7 +66,7 @@ exposed-javatime = { module = "org.jetbrains.exposed:exposed-java-time", version
 h2 = "com.h2database:h2:1.4.200" # current database driver, can't update to h2 v2 without sql migration
 
 # Exposed Migrations
-exposed-migrations = "com.github.Suwayomi:exposed-migrations:3.5.0"
+exposed-migrations = "com.github.Suwayomi:exposed-migrations:3.6.0"
 
 # Dependency Injection
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
