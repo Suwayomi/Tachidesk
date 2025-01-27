@@ -135,6 +135,7 @@ class SettingsMutation {
         updateSetting(settings.autoDownloadAheadLimit, serverConfig.autoDownloadNewChaptersLimit) // deprecated
         updateSetting(settings.autoDownloadNewChaptersLimit, serverConfig.autoDownloadNewChaptersLimit)
         updateSetting(settings.autoDownloadIgnoreReUploads, serverConfig.autoDownloadIgnoreReUploads)
+        updateSetting(settings.autoDownloadDeleteExistingFiles, serverConfig.autoDownloadDeleteExistingFiles)
 
         // extension
         updateSetting(settings.extensionRepos, serverConfig.extensionRepos)
