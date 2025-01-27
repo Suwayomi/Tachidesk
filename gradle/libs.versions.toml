@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.1.0"
+kotlin = "2.1.10"
 coroutines = "1.10.1"
 serialization = "1.8.0"
 okhttp = "5.0.0-alpha.14" # Major version is locked by Tachiyomi extensions
