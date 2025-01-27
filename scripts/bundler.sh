@@ -253,7 +253,7 @@ make_windows_bundle() {
 
   mkdir "$RELEASE_NAME/bin"
   cp "$JAR" "$RELEASE_NAME/bin/Suwayomi-Server.jar"
-  cp "scripts/resources/Suwayomi Launcher.bat" "$RELEASE_NAME"
+  cp "scripts/resources/*.bat" "$RELEASE_NAME"
 
   zip -9 -r "$RELEASE" "$RELEASE_NAME"
 }
