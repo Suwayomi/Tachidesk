@@ -11,6 +11,7 @@ import io.javalin.http.HttpStatus
 import kotlinx.serialization.json.Json
 import suwayomi.tachidesk.manga.impl.CategoryManga
 import suwayomi.tachidesk.manga.impl.Chapter
+import suwayomi.tachidesk.manga.impl.ChapterDownloadHelper
 import suwayomi.tachidesk.manga.impl.Library
 import suwayomi.tachidesk.manga.impl.Manga
 import suwayomi.tachidesk.manga.impl.Page
@@ -421,6 +422,32 @@ object MangaController {
             },
             withResults = {
                 image(HttpStatus.OK)
+                httpCode(HttpStatus.NOT_FOUND)
+            },
+        )
+
+    val downloadChapter =
+        handler(
+            pathParam<Int>("mangaId"),
+            pathParam<Int>("chapterId"),
+            documentWith = {
+                withOperation {
+                    summary("Download chapter as CBZ")
+                    description("Get the CBZ file of the specified chapter")
+                }
+            },
+            behaviorOf = { ctx, mangaId, chapterId ->
+                ctx.future {
+                    future { ChapterDownloadHelper.getCbzDownload(mangaId, chapterId) }
+                        .thenApply { (inputStream, contentType, fileName) ->
+                            ctx.header("Content-Type", contentType)
+                            ctx.header("Content-Disposition", "attachment; filename=\"$fileName\"")
+                            ctx.result(inputStream)
+                        }
+                }
+            },
+            withResults = {
+                httpCode(HttpStatus.OK)
                 httpCode(HttpStatus.NOT_FOUND)
             },
         )

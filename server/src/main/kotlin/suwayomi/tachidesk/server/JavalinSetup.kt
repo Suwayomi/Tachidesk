@@ -22,6 +22,7 @@ import org.eclipse.jetty.server.ServerConnector
 import suwayomi.tachidesk.global.GlobalAPI
 import suwayomi.tachidesk.graphql.GraphQL
 import suwayomi.tachidesk.manga.MangaAPI
+import suwayomi.tachidesk.opds.OpdsAPI
 import suwayomi.tachidesk.server.util.Browser
 import suwayomi.tachidesk.server.util.WebInterfaceManager
 import uy.kohesive.injekt.injectLazy
@@ -102,6 +103,8 @@ object JavalinSetup {
                             GlobalAPI.defineEndpoints()
                             MangaAPI.defineEndpoints()
                         }
+
+                        OpdsAPI.defineEndpoints()
                         GraphQL.defineEndpoints()
                     }
                 }
